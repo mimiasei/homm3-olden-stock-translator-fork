@@ -586,9 +586,10 @@ def pair_whirlpools_by_nearest_same_layer_rule(entities: Iterable[dict[str, Any]
 
 
 def pair_two_way_monoliths_by_animation_same_layer_rule(entities: Iterable[dict[str, Any]]) -> dict[str, Any]:
-    """Route two-way monoliths that share layer + animation.
+    """Route two-way monoliths that share animation (color), across any layer.
 
-    HoMM3 allows N>=2 same-color two-way monoliths (Neutral Affairs has 3).
+    HoMM3 allows N>=2 same-color two-way monoliths (Neutral Affairs has 3),
+    and same-color monoliths routinely link the surface to the underground.
     Olden ``propPortals`` carries a single ``targetIdx`` per object, so N==2 stays
     a mutual pair and N>2 becomes a deterministic circular chain
     (sorted by objectId): A→B→…→Z→A.
@@ -611,52 +612,52 @@ def pair_two_way_monoliths_by_animation_same_layer_rule(entities: Iterable[dict[
             "pairs": [],
         }
 
-by_animation: dict[str, list[dict[str, Any]]] = {}
-for candidate in candidates:
-    animation = candidate.get("templateAnimation")
-    if not isinstance(animation, str) or not animation:
-        raise ScenarioTravelPairingError(
-            f"monolith pairing requires templateAnimation for {candidate['sourceKey']}"
-        )
-    by_animation.setdefault(animation, []).append(candidate)
-
-pairs: list[dict[str, Any]] = []
-seen: set[int] = set()
-for animation, group in sorted(by_animation.items()):
-    if len(group) < 2:
-        raise ScenarioTravelPairingError(
-            "monolith pairing requires at least 2 objects per animation group; "
-            f"animation={animation} found {len(group)}"
-        )
-    ordered = sorted(group, key=lambda item: (int(item["sourceLayer"]), int(item["objectId"])))
-    for index, first in enumerate(ordered):
-        second = ordered[(index + 1) % len(ordered)]
-        object_a = int(first["objectId"])
-        object_b = int(second["objectId"])
-        if object_a in seen:
+    by_animation: dict[str, list[dict[str, Any]]] = {}
+    for candidate in candidates:
+        animation = candidate.get("templateAnimation")
+        if not isinstance(animation, str) or not animation:
             raise ScenarioTravelPairingError(
-                f"monolith duplicate route source detected: {object_a}->{object_b}"
+                f"monolith pairing requires templateAnimation for {candidate['sourceKey']}"
             )
-        seen.add(object_a)
-        pairs.append({
-            "objectIdA": object_a,
-            "sourceKeyA": first["sourceKey"],
-            "sourceXA": first["sourceX"],
-            "sourceYA": first["sourceY"],
-            "sourceLayerA": int(first["sourceLayer"]),
-            "objectIdB": object_b,
-            "sourceKeyB": second["sourceKey"],
-            "sourceXB": second["sourceX"],
-            "sourceYB": second["sourceY"],
-            "sourceLayerB": int(second["sourceLayer"]),
-            "templateObjectId": h3obj.OBJECT_TWO_WAY_MONOLITH,
-            "templateAnimation": animation,
-            "category": first.get("category"),
-            "payloadKind": first.get("payloadKind"),
-            "tieBreak": MONOLITH_TWO_WAY_TIE_BREAK,
-            "groupSize": len(ordered),
-            "routing": "mutual_pair" if len(ordered) == 2 else "circular_chain",
-        })
+        by_animation.setdefault(animation, []).append(candidate)
+
+    pairs: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for animation, group in sorted(by_animation.items()):
+        if len(group) < 2:
+            raise ScenarioTravelPairingError(
+                "monolith pairing requires at least 2 objects per animation group; "
+                f"animation={animation} found {len(group)}"
+            )
+        ordered = sorted(group, key=lambda item: (int(item["sourceLayer"]), int(item["objectId"])))
+        for index, first in enumerate(ordered):
+            second = ordered[(index + 1) % len(ordered)]
+            object_a = int(first["objectId"])
+            object_b = int(second["objectId"])
+            if object_a in seen:
+                raise ScenarioTravelPairingError(
+                    f"monolith duplicate route source detected: {object_a}->{object_b}"
+                )
+            seen.add(object_a)
+            pairs.append({
+                "objectIdA": object_a,
+                "sourceKeyA": first["sourceKey"],
+                "sourceXA": first["sourceX"],
+                "sourceYA": first["sourceY"],
+                "sourceLayerA": int(first["sourceLayer"]),
+                "objectIdB": object_b,
+                "sourceKeyB": second["sourceKey"],
+                "sourceXB": second["sourceX"],
+                "sourceYB": second["sourceY"],
+                "sourceLayerB": int(second["sourceLayer"]),
+                "templateObjectId": h3obj.OBJECT_TWO_WAY_MONOLITH,
+                "templateAnimation": animation,
+                "category": first.get("category"),
+                "payloadKind": first.get("payloadKind"),
+                "tieBreak": MONOLITH_TWO_WAY_TIE_BREAK,
+                "groupSize": len(ordered),
+                "routing": "mutual_pair" if len(ordered) == 2 else "circular_chain",
+            })
 
     if len(seen) != len(candidates):
         missing = sorted(int(item["objectId"]) for item in candidates if int(item["objectId"]) not in seen)
@@ -666,7 +667,7 @@ for animation, group in sorted(by_animation.items()):
         "objectId": h3obj.OBJECT_TWO_WAY_MONOLITH,
         "objectName": "two_way_monolith",
         "source": MONOLITH_TWO_WAY_PAIRING_SOURCE,
-        "policy": "same_layer_same_animation_mutual_pair_or_circular_chain",
+        "policy": "cross_layer_same_animation_mutual_pair_or_circular_chain",
         "tieBreak": MONOLITH_TWO_WAY_TIE_BREAK,
         "pairCount": len(pairs),
         "pairs": pairs,
